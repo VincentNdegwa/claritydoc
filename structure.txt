@@ -1,0 +1,118 @@
+.
+├── backend
+│   ├── alembic
+│   │   ├── env.py
+│   │   ├── __pycache__
+│   │   │   └── env.cpython-312.pyc
+│   │   ├── README
+│   │   ├── script.py.mako
+│   │   └── versions
+│   ├── alembic.ini
+│   ├── Dockerfile
+│   ├── .env
+│   ├── .env.example
+│   ├── .idea
+│   │   ├── backend.iml
+│   │   ├── .gitignore
+│   │   ├── inspectionProfiles
+│   │   │   └── profiles_settings.xml
+│   │   ├── misc.xml
+│   │   ├── modules.xml
+│   │   └── workspace.xml
+│   ├── pyproject.toml
+│   ├── src
+│   │   ├── agents
+│   │   │   ├── auditor.py
+│   │   │   ├── chronological.py
+│   │   │   ├── __init__.py
+│   │   │   ├── parser.py
+│   │   │   ├── pipeline.py
+│   │   │   └── profiler.py
+│   │   ├── api
+│   │   │   ├── __init__.py
+│   │   │   ├── router.py
+│   │   │   └── v1
+│   │   │       ├── audits.py
+│   │   │       ├── documents.py
+│   │   │       ├── __init__.py
+│   │   │       ├── obligations.py
+│   │   │       ├── relationships.py
+│   │   │       └── schemas.py
+│   │   ├── config.py
+│   │   ├── core
+│   │   │   ├── auth.py
+│   │   │   └── __init__.py
+│   │   ├── database
+│   │   │   ├── __init__.py
+│   │   │   ├── models.py
+│   │   │   ├── __pycache__
+│   │   │   │   ├── __init__.cpython-312.pyc
+│   │   │   │   ├── models.cpython-312.pyc
+│   │   │   │   └── session.cpython-312.pyc
+│   │   │   └── session.py
+│   │   ├── __init__.py
+│   │   ├── main.py
+│   │   ├── __pycache__
+│   │   │   ├── config.cpython-312.pyc
+│   │   │   └── __init__.cpython-312.pyc
+│   │   ├── queue
+│   │   │   ├── config.py
+│   │   │   ├── start_worker.py
+│   │   │   └── worker.py
+│   │   └── services
+│   │       ├── ai
+│   │       │   ├── base.py
+│   │       │   ├── factory.py
+│   │       │   ├── providers
+│   │       │   │   └── openai_provider.py
+│   │       │   └── telemetry.py
+│   │       ├── __init__.py
+│   │       └── storage.py
+│   ├── storage_vault
+│   └── uv.lock
+├── docker-compose.yml
+├── docs
+│   ├── backend-patter.md
+│   ├── backend-prd.md
+│   ├── blueprint.html
+│   ├── pydantic.py
+│   ├── schema.sql
+│   └── ui-flow.html
+├── .env
+├── frontend
+│   ├── app
+│   │   ├── app.vue
+│   │   ├── assets
+│   │   │   └── css
+│   │   │       └── tailwind.css
+│   │   ├── components
+│   │   │   └── ui
+│   │   ├── lib
+│   │   │   └── utils.ts
+│   │   ├── pages
+│   │   │   ├── auth
+│   │   │   │   ├── login
+│   │   │   │   │   ├── components
+│   │   │   │   │   └── index.vue
+│   │   │   │   └── register
+│   │   │   │       ├── components
+│   │   │   │       └── index.vue
+│   │   │   └── index.vue
+│   │   └── types
+│   │       ├── auth.ts
+│   │       └── index.ts
+│   ├── components.json
+│   ├── .env
+│   ├── .gitignore
+│   ├── nuxt.config.ts
+│   ├── package.json
+│   ├── package-lock.json
+│   ├── public
+│   │   ├── favicon.ico
+│   │   └── robots.txt
+│   ├── README.md
+│   └── tsconfig.json
+├── .gitignore
+└── structure.txt
+
+36 directories, 80 files
