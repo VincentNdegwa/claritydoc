@@ -11,7 +11,7 @@ from src.api.v1.schemas import DocumentRelationshipCreate, DocumentRelationshipS
 router = APIRouter()
 
 
-@router.post("/relationships", response_model=DocumentRelationshipSuccessResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=DocumentRelationshipSuccessResponse, status_code=status.HTTP_201_CREATED)
 async def create_document_relationship(
     relationship: DocumentRelationshipCreate,
     session: AsyncSession = Depends(get_db_session),

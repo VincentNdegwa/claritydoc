@@ -18,7 +18,7 @@ from src.api.v1.schemas import (
     DocumentChunkResponse,
 )
 
-router = APIRouter(prefix="/documents", tags=["Documents"])
+router = APIRouter()
 
 
 @router.post("/upload", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
