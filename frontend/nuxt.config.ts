@@ -4,18 +4,18 @@ export default defineNuxtConfig({
   devtools: { enabled: true },
   modules: ['shadcn-nuxt', '@nuxtjs/tailwindcss', '@clerk/nuxt'],
   css: ['~/assets/css/tailwind.css'],
+  
+  tailwindcss: {
+    exposeConfig: true,
+    viewer: true,
+  },
+
+  routeRules: {
+    '/dashboard/**': { appLayout: 'dashboard' },
+  },
+
   shadcn: {
-    /**
-     * Prefix for all the imported component.
-     * @default "Ui"
-     */
     prefix: '',
-    /**
-     * Directory that the component lives in.
-     * Will respect the Nuxt aliases.
-     * @link https://nuxt.com/docs/api/nuxt-config#alias
-     * @default "@/components/ui"
-     */
     componentDir: '@/components/ui'
   }
 })

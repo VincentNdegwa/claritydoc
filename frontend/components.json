@@ -1,7 +1,7 @@
 {
   "$schema": "https://shadcn-vue.com/schema.json",
-  "style": "reka-mira",
-  "font": "inter",
+  "style": "reka-nova",
+  "font": "noto-sans",
   "typescript": true,
   "tailwind": {
     "config": "",
@@ -12,7 +12,7 @@
   },
   "iconLibrary": "lucide",
   "rtl": false,
-  "pointer": false,
+  "pointer": true,
   "aliases": {
     "components": "@/components",
     "utils": "@/lib/utils",
@@ -21,6 +21,7 @@
     "composables": "@/composables"
   },
   "menuColor": "default",
-  "menuAccent": "subtle",
+  "menuAccent": "bold",
+  "fontHeading": "roboto",
   "registries": {}
 }

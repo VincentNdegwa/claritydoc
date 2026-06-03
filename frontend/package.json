@@ -12,6 +12,7 @@
   "dependencies": {
     "@clerk/nuxt": "^2.5.2",
     "@lucide/vue": "^1.17.0",
+    "@vueuse/core": "^14.3.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "nuxt": "^4.4.6",
