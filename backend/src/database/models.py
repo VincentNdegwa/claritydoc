@@ -11,13 +11,14 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
-    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    clerk_id: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
     first_name: Mapped[str | None] = mapped_column(String(100))
     last_name: Mapped[str | None] = mapped_column(String(100))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    documents: Mapped[list["Document"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    documents: Mapped[list["Document"]] = relationship(back_populates="user", cascade="all, delete-orphan", lazy="selectin")
 
 
 class Document(Base):
@@ -32,12 +33,22 @@ class Document(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    user: Mapped["User"] = relationship(back_populates="documents")
-    versions: Mapped[list["DocumentVersion"]] = relationship(back_populates="document", cascade="all, delete-orphan")
-    current_version: Mapped["DocumentVersion | None"] = relationship(foreign_keys=[current_version_id])
-    obligations: Mapped[list["Obligation"]] = relationship(back_populates="document", cascade="all, delete-orphan")
-    source_relationships: Mapped[list["DocumentRelationship"]] = relationship(foreign_keys="DocumentRelationship.source_document_id", cascade="all, delete-orphan")
-    target_relationships: Mapped[list["DocumentRelationship"]] = relationship(foreign_keys="DocumentRelationship.target_document_id", cascade="all, delete-orphan")
+    user: Mapped["User"] = relationship(back_populates="documents", lazy="selectin")
+    versions: Mapped[list["DocumentVersion"]] = relationship(back_populates="document", foreign_keys="DocumentVersion.document_id", cascade="all, delete-orphan", lazy="selectin")
+    current_version: Mapped["DocumentVersion | None"] = relationship(foreign_keys=[current_version_id], lazy="selectin")
+    obligations: Mapped[list["Obligation"]] = relationship(back_populates="document", cascade="all, delete-orphan", lazy="selectin")
+    source_relationships: Mapped[list["DocumentRelationship"]] = relationship(
+        foreign_keys="DocumentRelationship.source_document_id",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+        back_populates="source_document"
+    )
+    target_relationships: Mapped[list["DocumentRelationship"]] = relationship(
+        foreign_keys="DocumentRelationship.target_document_id",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+        back_populates="target_document"
+    )
 
 
 class DocumentVersion(Base):
@@ -52,9 +63,9 @@ class DocumentVersion(Base):
     is_signed: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    document: Mapped["Document"] = relationship(back_populates="versions")
-    chunks: Mapped[list["DocumentChunk"]] = relationship(back_populates="document_version", cascade="all, delete-orphan")
-    audit_flags: Mapped[list["AuditFlag"]] = relationship(back_populates="document_version", cascade="all, delete-orphan")
+    document: Mapped["Document"] = relationship(back_populates="versions", foreign_keys=[document_id], lazy="selectin")
+    chunks: Mapped[list["DocumentChunk"]] = relationship(back_populates="document_version", cascade="all, delete-orphan", lazy="selectin")
+    audit_flags: Mapped[list["AuditFlag"]] = relationship(back_populates="document_version", cascade="all, delete-orphan", lazy="selectin")
 
 
 class DocumentChunk(Base):
@@ -70,9 +81,9 @@ class DocumentChunk(Base):
     char_end: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    document_version: Mapped["DocumentVersion"] = relationship(back_populates="chunks")
-    audit_flags: Mapped[list["AuditFlag"]] = relationship(back_populates="document_chunk")
-    obligations: Mapped[list["Obligation"]] = relationship(back_populates="document_chunk")
+    document_version: Mapped["DocumentVersion"] = relationship(back_populates="chunks", lazy="selectin")
+    audit_flags: Mapped[list["AuditFlag"]] = relationship(back_populates="document_chunk", lazy="selectin")
+    obligations: Mapped[list["Obligation"]] = relationship(back_populates="document_chunk", lazy="selectin")
 
 
 class AuditFlag(Base):
@@ -89,8 +100,8 @@ class AuditFlag(Base):
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="unresolved")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    document_version: Mapped["DocumentVersion"] = relationship(back_populates="audit_flags")
-    document_chunk: Mapped["DocumentChunk | None"] = relationship(back_populates="audit_flags")
+    document_version: Mapped["DocumentVersion"] = relationship(back_populates="audit_flags", lazy="selectin")
+    document_chunk: Mapped["DocumentChunk | None"] = relationship(back_populates="audit_flags", lazy="selectin")
 
 
 class Obligation(Base):
@@ -108,8 +119,8 @@ class Obligation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    document: Mapped["Document"] = relationship(back_populates="obligations")
-    document_chunk: Mapped["DocumentChunk | None"] = relationship(back_populates="obligations")
+    document: Mapped["Document"] = relationship(back_populates="obligations", lazy="selectin")
+    document_chunk: Mapped["DocumentChunk | None"] = relationship(back_populates="obligations", lazy="selectin")
 
 
 class DocumentRelationship(Base):
@@ -125,8 +136,16 @@ class DocumentRelationship(Base):
     relationship_type: Mapped[str] = mapped_column(String(100), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    source_document: Mapped["Document"] = relationship(foreign_keys=[source_document_id])
-    target_document: Mapped["Document"] = relationship(foreign_keys=[target_document_id])
+    source_document: Mapped["Document"] = relationship(
+        foreign_keys=[source_document_id],
+        lazy="selectin",
+        back_populates="source_relationships"
+    )
+    target_document: Mapped["Document"] = relationship(
+        foreign_keys=[target_document_id],
+        lazy="selectin",
+        back_populates="target_relationships"
+    )
 
 
 class AIInferenceLog(Base):
@@ -147,8 +166,8 @@ class AIInferenceLog(Base):
     error_message: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    user: Mapped["User"] = relationship(foreign_keys=[user_id])
-    document: Mapped["Document | None"] = relationship(foreign_keys=[document_id])
+    user: Mapped["User"] = relationship(foreign_keys=[user_id], lazy="selectin")
+    document: Mapped["Document | None"] = relationship(foreign_keys=[document_id], lazy="selectin")
 
 
 class BackgroundJob(Base):
@@ -167,7 +186,7 @@ class BackgroundJob(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    document: Mapped["Document"] = relationship(foreign_keys=[document_id])
+    document: Mapped["Document"] = relationship(foreign_keys=[document_id], lazy="selectin")
 
 
 class EvaluationRun(Base):

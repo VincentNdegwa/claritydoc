@@ -73,17 +73,17 @@ async def execute_pipeline_lifecycle(
         except Exception as pipeline_error:
             logger.error(f"Critical execution fault on processing pipeline: {pipeline_error}")
             await db.rollback()
+            
             await _update_document_status(db, document_id, "error")
-            job.status = "failed"
-            job.error_payload = {"error": str(pipeline_error)}
             await db.commit()
+            logger.error(f"Job failed for document: {document_id}")
+            raise pipeline_error
 
 
 async def _update_version_text(db: AsyncSession, version_id: uuid.UUID, text: str) -> None:
     version = await db.get(DocumentVersion, version_id)
     if version:
         version.parsed_markdown = text
-        await db.commit()
 
 async def _update_document_profile(db: AsyncSession, document_id: uuid.UUID, title: str, doc_type: str) -> None:
     document = await db.get(Document, document_id)
@@ -92,14 +92,17 @@ async def _update_document_profile(db: AsyncSession, document_id: uuid.UUID, tit
             document.title = title
         if doc_type:
             document.document_type = doc_type
-        await db.commit()
 
 async def _update_document_status(db: AsyncSession, document_id: uuid.UUID, status_str: str) -> None:
     document = await db.get(Document, document_id)
     if document:
         document.status = status_str
-        await db.commit()
+        await db.flush()
 
 
 class WorkerSettings:
     functions = [execute_pipeline_lifecycle]
+    on_startup = None
+    on_shutdown = None
+    retry_jobs = True
+    max_tries = 3

@@ -1,81 +1,71 @@
-import jwt
-import httpx
-from fastapi import HTTPException, Security, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from pydantic import BaseModel, EmailStr
+from typing import Annotated
 from uuid import UUID
+from fastapi import Depends, HTTPException, Request
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from clerk_backend_api import AuthenticateRequestOptions, authenticate_request
+from clerk_backend_api.security.types import RequestState
+from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
 from src.config import settings
+from src.database.session import get_db_session
+from src.database.models import User
 
 
-security_scheme = HTTPBearer()
+http_bearer = HTTPBearer(auto_error=False)
 
 
 class AuthenticatedUser(BaseModel):
     id: UUID
-    email: EmailStr
+    email: str
+    clerk_id: str
 
 
-class JWTValidator:
-    def __init__(self):
-        self.jwks_url = settings.AUTH_JWKS_URL
-        self.jwks_cache = None
-
-    async def _fetch_jwks(self) -> dict:
-        if self.jwks_cache:
-            return self.jwks_cache
-        
-        async with httpx.AsyncClient() as client:
-            response = await client.get(self.jwks_url)
-            if response.status_code != 200:
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to fetch authentication public keys."
-                )
-            self.jwks_cache = response.json()
-            return self.jwks_cache
-
-    async def validate_token(self, credentials: HTTPAuthorizationCredentials = Security(security_scheme)) -> AuthenticatedUser:
-        token = credentials.credentials
-        try:
-            unverified_headers = jwt.get_unverified_header(token)
-            kid = unverified_headers.get("kid")
-            
-            jwks = await self._fetch_jwks()
-            public_key = None
-            for key in jwks.get("keys", []):
-                if key.get("kid") == kid:
-                    public_key = jwt.algorithms.RSAAlgorithm.from_jwk(key)
-                    break
-                    
-            if not public_key:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Invalid token signing key identifier."
-                )
-
-            payload = jwt.decode(
-                token,
-                public_key,
-                algorithms=["RS256"],
-                audience=settings.AUTH_AUDIENCE,
-                issuer=settings.AUTH_ISSUER
-            )
-            
-            return AuthenticatedUser(
-                id=payload["sub"], 
-                email=payload["email"]
-            )
-
-        except jwt.ExpiredSignatureError:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Authentication token has expired."
-            )
-        except (jwt.InvalidTokenError, KeyError):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid authentication credentials."
-            )
+def require_auth(
+    request: Request,
+    _creds: Annotated[HTTPAuthorizationCredentials | None, Depends(http_bearer)] = None,
+) -> RequestState:
+    state = authenticate_request(
+        request,
+        AuthenticateRequestOptions(
+            secret_key=settings.CLERK_SECRET_KEY,
+            jwt_key=settings.CLERK_JWT_KEY,
+            authorized_parties=settings.CLERK_AUTHORIZED_PARTIES,
+            accepts_token=["session_token"],
+        ),
+    )
+    if not state.is_signed_in:
+        raise HTTPException(
+            status_code=401,
+            detail=state.reason or "unauthorized",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return state
 
 
-auth_validator = JWTValidator()
+async def get_current_user(
+    state: Annotated[RequestState, Depends(require_auth)],
+    db: AsyncSession = Depends(get_db_session),
+) -> AuthenticatedUser:
+    clerk_id = state.payload["sub"]
+    
+    query = select(User).where(User.clerk_id == clerk_id)
+    result = await db.execute(query)
+    user = result.scalar_one_or_none()
+    
+    if not user:
+        user = User(
+            clerk_id=clerk_id,
+            email=state.payload.get("email", ""),
+            first_name=state.payload.get("first_name"),
+            last_name=state.payload.get("last_name"),
+        )
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+    
+    return AuthenticatedUser(
+        id=user.id,
+        email=user.email,
+        clerk_id=user.clerk_id
+    )

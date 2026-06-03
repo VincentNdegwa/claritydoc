@@ -17,7 +17,9 @@ COPY --from=builder /app/.venv /app/.venv
 
 COPY src/ ./src/
 
-RUN mkdir -p storage_vault
+RUN mkdir -p storage_vault && \
+    chown -R nobody:nobody storage_vault && \
+    chmod -R 755 storage_vault
 
 EXPOSE 8000
 

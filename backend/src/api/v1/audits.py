@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from src.database.session import get_db_session
 from src.database.models import AuditFlag
+from src.core.auth import get_current_user, AuthenticatedUser
 from src.api.v1.schemas import AuditFlagCreate, AuditFlagResponse, AuditFlagStatusUpdate
 
 
@@ -16,6 +17,7 @@ router = APIRouter()
 async def create_audit_flag(
     audit_flag: AuditFlagCreate,
     session: AsyncSession = Depends(get_db_session),
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ):
     db_audit_flag = AuditFlag(**audit_flag.model_dump())
     session.add(db_audit_flag)
@@ -30,6 +32,7 @@ async def list_audit_flags(
     skip: int = 0,
     limit: int = 100,
     session: AsyncSession = Depends(get_db_session),
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ):
     query = select(AuditFlag)
     if document_version_id:
@@ -44,6 +47,7 @@ async def list_audit_flags(
 async def get_audit_flag(
     audit_flag_id: UUID,
     session: AsyncSession = Depends(get_db_session),
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ):
     result = await session.execute(select(AuditFlag).where(AuditFlag.id == audit_flag_id))
     audit_flag = result.scalar_one_or_none()
@@ -57,6 +61,7 @@ async def update_audit_flag(
     flag_id: UUID,
     status_update: AuditFlagStatusUpdate,
     session: AsyncSession = Depends(get_db_session),
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ):
     result = await session.execute(select(AuditFlag).where(AuditFlag.id == flag_id))
     audit_flag = result.scalar_one_or_none()

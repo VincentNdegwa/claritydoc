@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from src.database.session import get_db_session
 from src.database.models import Obligation
+from src.core.auth import get_current_user, AuthenticatedUser
 from src.api.v1.schemas import ObligationCreate, ObligationResponse, ObligationStatusUpdate
 
 
@@ -16,6 +17,7 @@ router = APIRouter()
 async def create_obligation(
     obligation: ObligationCreate,
     session: AsyncSession = Depends(get_db_session),
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ):
     db_obligation = Obligation(**obligation.model_dump())
     session.add(db_obligation)
@@ -31,6 +33,7 @@ async def list_obligations(
     skip: int = 0,
     limit: int = 100,
     session: AsyncSession = Depends(get_db_session),
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ):
     query = select(Obligation)
     if document_id:
@@ -47,6 +50,7 @@ async def list_obligations(
 async def get_obligation(
     obligation_id: UUID,
     session: AsyncSession = Depends(get_db_session),
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ):
     result = await session.execute(select(Obligation).where(Obligation.id == obligation_id))
     obligation = result.scalar_one_or_none()
@@ -60,6 +64,7 @@ async def update_obligation(
     obligation_id: UUID,
     status_update: ObligationStatusUpdate,
     session: AsyncSession = Depends(get_db_session),
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ):
     result = await session.execute(select(Obligation).where(Obligation.id == obligation_id))
     obligation = result.scalar_one_or_none()

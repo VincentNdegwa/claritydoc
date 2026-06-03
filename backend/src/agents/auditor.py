@@ -1,5 +1,5 @@
 import uuid
-from typing import List
+from typing import List, Literal
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.config import settings
@@ -9,11 +9,29 @@ from src.database.models import DocumentChunk, AuditFlag
 
 
 class SingleRiskFinding(BaseModel):
-    category: str = Field(description="Specific legal risk type (e.g., ip_ownership, liability_cap, asymmetrical_termination)")
-    risk_level: str = Field(description="Must match exact value constraints: low, medium, high, critical")
-    issue_summary: str = Field(description="Concise description mapping the localized contract issue")
-    detailed_explanation: str = Field(description="Plain English summary highlighting the operational risk exposure to the user")
-    playbook_counter_proposal: str = Field(description="Strategic alternative text proposals or counter-scripts for negotiation")
+    category: str = Field(
+        description="Specific legal risk type (e.g., ip_ownership, liability_cap, asymmetrical_termination)",
+        min_length=1,
+        max_length=100,
+    )
+    risk_level: Literal["low", "medium", "high", "critical"] = Field(
+        description="Must match exact value constraints: low, medium, high, critical"
+    )
+    issue_summary: str = Field(
+        description="Concise description mapping the localized contract issue",
+        min_length=1,
+        max_length=255,
+    )
+    detailed_explanation: str = Field(
+        description="Plain English summary highlighting the operational risk exposure to the user",
+        min_length=1,
+        max_length=4000,
+    )
+    playbook_counter_proposal: str = Field(
+        description="Strategic alternative text proposals or counter-scripts for negotiation",
+        min_length=1,
+        max_length=2000,
+    )
 
 
 class AuditResultSchema(BaseModel):
@@ -25,6 +43,7 @@ ROLE:
 You are an elite corporate legal risk validator. Scan the provided section of text for asymmetric liabilities, indemnification loops, or hidden commercial traps.
 CRITICAL CONSTRAINT:
 If zero verified high risks are present in the text, you MUST return an empty array. Do not generate generic commentary.
+All string fields must respect their maximum lengths: category (100 chars), issue_summary (255 chars), detailed_explanation (4000 chars), playbook_counter_proposal (2000 chars).
 """
 
 
@@ -32,16 +51,23 @@ class AuditorAgent:
     async def execute_audit(self, db: AsyncSession, user_id: uuid.UUID, document_id: uuid.UUID, version_id: uuid.UUID, raw_text: str, doc_type: str) -> None:
         paragraphs = [p.strip() for p in raw_text.split("\n\n") if p.strip()]
         chunk_records = []
+        char_position = 0
         
         for index, text in enumerate(paragraphs):
+            char_start = raw_text.find(text, char_position)
+            char_end = char_start + len(text) if char_start >= 0 else char_position + len(text)
+            
             chunk = DocumentChunk(
                 id=uuid.uuid4(),
                 document_version_id=version_id,
                 chunk_index=index,
-                raw_text=text
+                raw_text=text,
+                char_start=char_start,
+                char_end=char_end
             )
             db.add(chunk)
             chunk_records.append(chunk)
+            char_position = char_end
             
         await db.flush()
 

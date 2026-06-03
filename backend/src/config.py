@@ -22,9 +22,10 @@ class Settings(BaseSettings):
     QDRANT_URL: str = "http://localhost:6333"
     QDRANT_API_KEY: str = ""
 
-    AUTH_JWKS_URL: str = ""
-    AUTH_AUDIENCE: str = ""
-    AUTH_ISSUER: str = ""
+    CLERK_SECRET_KEY: str = ""
+    CLERK_JWT_KEY: str = ""
+    CLERK_AUTHORIZED_PARTIES: list[str] = []
+    CLERK_WEBHOOK_SIGNING_SECRET: str = ""
 
     STORAGE_PROVIDER: str = "local"
     STORAGE_BUCKET_NAME: Optional[str] = None

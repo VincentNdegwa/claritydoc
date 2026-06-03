@@ -29,4 +29,5 @@ storage_vault/
 .DS_Store
 Thumbs.db
 
-docs
+docs/
+local.sh
