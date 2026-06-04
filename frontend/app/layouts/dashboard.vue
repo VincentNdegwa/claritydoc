@@ -23,26 +23,34 @@
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem>
-                <SidebarMenuButton as-child>
+                <SidebarMenuButton as-child :is-active="isActive('/dashboard')">
+                  <NuxtLink to="/dashboard">
+                    <FileText />
+                    <div>Dashboard</div>
+                  </NuxtLink>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton as-child :is-active="isActive('/dashboard/documents')">
                   <NuxtLink to="/dashboard/documents">
                     <FileText />
-                    <div>Documents</div>
+                    <div>Document Vault</div>
                   </NuxtLink>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
-                <SidebarMenuButton as-child>
-                  <NuxtLink to="/dashboard/audits">
-                    <Search />
-                    <div>Audits</div>
+                <SidebarMenuButton as-child :is-active="isActive('/dashboard/commitments')">
+                  <NuxtLink to="/dashboard/commitments">
+                    <Calendar />
+                    <div>Commitments</div>
                   </NuxtLink>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
-                <SidebarMenuButton as-child>
-                  <NuxtLink to="/dashboard/obligations">
-                    <Bell />
-                    <div>Obligations</div>
+                <SidebarMenuButton as-child :is-active="isActive('/dashboard/billing')">
+                  <NuxtLink to="/dashboard/billing">
+                    <CreditCard />
+                    <div>Telemetry & Billing</div>
                   </NuxtLink>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -125,8 +133,19 @@
         <Breadcrumb>
           <BreadcrumbList>
             <BreadcrumbItem>
-              <BreadcrumbLink href="/dashboard">Dashboard</BreadcrumbLink>
+              <BreadcrumbLink as-child>
+                <NuxtLink to="/dashboard">Dashboard</NuxtLink>
+              </BreadcrumbLink>
             </BreadcrumbItem>
+            <template v-for="(item, index) in breadcrumbs" :key="index">
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbLink v-if="item.href" as-child>
+                  <NuxtLink :to="item.href">{{ item.label }}</NuxtLink>
+                </BreadcrumbLink>
+                <BreadcrumbPage v-else>{{ item.label }}</BreadcrumbPage>
+              </BreadcrumbItem>
+            </template>
           </BreadcrumbList>
         </Breadcrumb>
       </header>
@@ -139,13 +158,31 @@
 </template>
 
 <script setup lang="ts">
-import { FileText, Search, Bell, ChevronsUpDown, User, CreditCard, Settings, LogOut } from '@lucide/vue'
+import { FileText, ChevronsUpDown, User, CreditCard, Settings, LogOut, Calendar } from '@lucide/vue'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Separator } from '@/components/ui/separator'
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarRail, SidebarTrigger } from '@/components/ui/sidebar'
-import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList } from '@/components/ui/breadcrumb'
+import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from '@/components/ui/breadcrumb'
+
+interface BreadcrumbItem {
+  label: string
+  href?: string
+}
+
+const route = useRoute()
+const breadcrumbs = computed<BreadcrumbItem[]>(() => {
+  const metaBreadcrumbs = route.meta.breadcrumbs
+  if (typeof metaBreadcrumbs === 'function') {
+    return metaBreadcrumbs(route) as BreadcrumbItem[]
+  }
+  return (metaBreadcrumbs as BreadcrumbItem[]) || []
+})
 
 const { user } = useUser()
 const { signOut } = useAuth()
+
+const isActive = (path: string) => {
+  return route.path === path || route.path.startsWith(path + '/')
+}
 </script>
