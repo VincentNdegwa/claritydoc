@@ -1,6 +1,6 @@
 from datetime import datetime, date
 from uuid import UUID
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class UserBase(BaseModel):
@@ -48,6 +48,29 @@ class DocumentResponse(DocumentBase):
         from_attributes = True
 
 
+class DocumentFlagSummary(BaseModel):
+    total: int = 0
+    unresolved: int = 0
+    resolved: int = 0
+    by_risk_level: dict[str, int] = Field(default_factory=dict)
+
+
+class DocumentVersionSummary(BaseModel):
+    id: UUID
+    version_number: int
+    created_at: datetime
+    storage_path: str
+    file_type: str
+    is_signed: bool
+    flag_count: int = 0
+
+
+class DocumentDetailResponse(BaseModel):
+    document: DocumentResponse
+    versions: list[DocumentVersionSummary]
+    flag_summary: DocumentFlagSummary
+
+
 class DocumentVersionBase(BaseModel):
     version_number: int = 1
     storage_path: str
@@ -89,6 +112,14 @@ class DocumentChunkResponse(DocumentChunkBase):
 
     class Config:
         from_attributes = True
+
+
+class DocumentChunkPreviewResponse(BaseModel):
+    id: UUID
+    chunk_index: int
+    heading: str | None = None
+    page_number: int | None = None
+    preview_text: str
 
 
 class AuditFlagBase(BaseModel):
@@ -172,8 +203,21 @@ class DocumentRelationshipSuccessResponse(BaseModel):
     status: str
 
 
+class ObligationPreviewResponse(BaseModel):
+    id: UUID
+    title: str
+    description: str | None = None
+    due_date: date | None = None
+    status: str
+    document_chunk_id: UUID | None = None
+
+
 class DeepAnalysisViewResponse(BaseModel):
     document: DocumentResponse
     active_version: DocumentVersionResponse
+    flag_summary: DocumentFlagSummary
     flags: list[AuditFlagResponse]
-    chunks: list[DocumentChunkResponse]
+    chunk_count: int
+    chunk_preview: list[DocumentChunkPreviewResponse]
+    obligation_count: int
+    obligations: list[ObligationPreviewResponse]

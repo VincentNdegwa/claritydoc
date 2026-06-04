@@ -1,6 +1,7 @@
 import uuid
 from typing import List, Literal
-from pydantic import BaseModel, Field
+from loguru import logger
+from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.config import settings
 from src.services.ai.factory import ai_gateway
@@ -42,8 +43,14 @@ AUDITOR_SYSTEM_PROMPT = """
 ROLE:
 You are an elite corporate legal risk validator. Scan the provided section of text for asymmetric liabilities, indemnification loops, or hidden commercial traps.
 CRITICAL CONSTRAINT:
-If zero verified high risks are present in the text, you MUST return an empty array. Do not generate generic commentary.
+If zero substantiated risks of any severity are present in the text, return an empty array. Otherwise enumerate every clause that creates a material exposure and assign the appropriate risk_level (low, medium, high, critical) based on likelihood and impact. Do not suppress medium or low risks.
 All string fields must respect their maximum lengths: category (100 chars), issue_summary (255 chars), detailed_explanation (4000 chars), playbook_counter_proposal (2000 chars).
+
+FACTUALITY RULES:
+1. Only describe a risk if the provided text explicitly contains the supporting clause. Quote or paraphrase the exact contract language in the detailed_explanation.
+2. Every finding must reference the specific section heading or paragraph label that triggered the concern (e.g., "Section 4.A" or "Insurance clause, page 5"). If no heading is supplied, describe the relevant clause in plain language (e.g., "Data sharing paragraph").
+3. If the text already provides a reciprocal protection that mitigates the risk, either skip the finding or explicitly explain why that protection is insufficient.
+4. Never speculate about obligations, indemnities, or payments that are not stated verbatim in the text. If evidence is incomplete, return an empty findings list for that chunk.
 """
 
 
@@ -72,11 +79,22 @@ class AuditorAgent:
         await db.flush()
 
         for chunk in chunk_records:
-            parsed_schema, tracking_meta = await ai_gateway.generate_structured_output(
-                system_prompt=AUDITOR_SYSTEM_PROMPT + f"\nContext baseline schema target document format: {doc_type}",
-                user_content=chunk.raw_text,
-                response_model=AuditResultSchema
-            )
+            try:
+                parsed_schema, tracking_meta = await ai_gateway.generate_structured_output(
+                    system_prompt=AUDITOR_SYSTEM_PROMPT + f"\nContext baseline schema target document format: {doc_type}",
+                    user_content=chunk.raw_text,
+                    response_model=AuditResultSchema
+                )
+            except ValidationError as validation_err:
+                logger.error(
+                    "AuditorAgent structured output failed for document={} chunk_index={} version={} error={} input_preview={}",
+                    document_id,
+                    chunk.chunk_index,
+                    version_id,
+                    validation_err,
+                    getattr(validation_err, "errors", lambda: [])()
+                )
+                raise
             
             await log_inference_metrics(db, user_id, document_id, "AuditorAgent", tracking_meta)
             

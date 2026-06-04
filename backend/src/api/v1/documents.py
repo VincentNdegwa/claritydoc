@@ -1,21 +1,27 @@
 import uuid
+from collections import defaultdict
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
+from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 
 from src.database.session import get_db_session
-from src.database.models import Document, DocumentVersion, DocumentChunk, AuditFlag
+from src.database.models import Document, DocumentVersion, DocumentChunk, AuditFlag, Obligation
 from src.core.auth import get_current_user, AuthenticatedUser
 from src.services.storage import storage_service
 from src.agents.pipeline import agent_orchestrator
 from src.api.v1.schemas import (
     DocumentResponse,
+    DocumentDetailResponse,
+    DocumentVersionSummary,
+    DocumentFlagSummary,
     DeepAnalysisViewResponse,
     DocumentVersionResponse,
     AuditFlagResponse,
-    DocumentChunkResponse,
+    DocumentChunkPreviewResponse,
+    ObligationPreviewResponse,
 )
 
 router = APIRouter()
@@ -99,22 +105,74 @@ async def list_documents(
     return result.scalars().all()
 
 
-@router.get("/{document_id}", response_model=DocumentResponse)
+@router.get("/{document_id}", response_model=DocumentDetailResponse)
 async def get_document_details(
     document_id: uuid.UUID,
     db: AsyncSession = Depends(get_db_session),
     current_user: AuthenticatedUser = Depends(get_current_user),
 ):
-    query = select(Document).where(Document.id == document_id, Document.user_id == current_user.id)
-    result = await db.execute(query)
+    document_query = (
+        select(Document)
+        .where(Document.id == document_id, Document.user_id == current_user.id)
+        .options(selectinload(Document.versions))
+    )
+    result = await db.execute(document_query)
     document = result.scalar_one_or_none()
-    
+
     if not document:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Requested document resource could not be found or access permissions are invalid."
         )
-    return document
+
+    versions = sorted(document.versions, key=lambda v: v.version_number, reverse=True)
+    version_ids = [version.id for version in versions]
+
+    flag_summary = DocumentFlagSummary(total=0, unresolved=0, resolved=0, by_risk_level={})
+    version_flag_counts = {version_id: 0 for version_id in version_ids}
+
+    if version_ids:
+        flag_rows = await db.execute(
+            select(
+                AuditFlag.document_version_id,
+                AuditFlag.risk_level,
+                AuditFlag.status,
+                func.count(AuditFlag.id)
+            ).where(AuditFlag.document_version_id.in_(version_ids))
+            .group_by(AuditFlag.document_version_id, AuditFlag.risk_level, AuditFlag.status)
+        )
+
+        risk_level_totals = defaultdict(int)
+
+        for version_id, risk_level, status_value, count in flag_rows:
+            version_flag_counts[version_id] = version_flag_counts.get(version_id, 0) + count
+            flag_summary.total += count
+            if status_value == "resolved":
+                flag_summary.resolved += count
+            else:
+                flag_summary.unresolved += count
+            risk_level_totals[risk_level] += count
+
+        flag_summary.by_risk_level = dict(risk_level_totals)
+
+    version_summaries = [
+        DocumentVersionSummary(
+            id=version.id,
+            version_number=version.version_number,
+            created_at=version.created_at,
+            storage_path=version.storage_path,
+            file_type=version.file_type,
+            is_signed=version.is_signed,
+            flag_count=version_flag_counts.get(version.id, 0)
+        )
+        for version in versions
+    ]
+
+    return DocumentDetailResponse(
+        document=DocumentResponse.model_validate(document),
+        versions=version_summaries,
+        flag_summary=flag_summary,
+    )
 
 
 @router.get("/{document_id}/analysis", response_model=DeepAnalysisViewResponse)
@@ -144,25 +202,91 @@ async def get_document_deep_analysis(
             detail="The active target operational layer is detached or missing a reference version model."
         )
 
-    chunks_query = (
-        select(DocumentChunk)
-        .where(DocumentChunk.document_version_id == active_version.id)
-        .order_by(DocumentChunk.chunk_index.asc())
-    )
     flags_query = (
         select(AuditFlag)
         .where(AuditFlag.document_version_id == active_version.id)
         .order_by(AuditFlag.created_at.desc())
     )
-
-    chunks_result = await db.execute(chunks_query)
     flags_result = await db.execute(flags_query)
+
+    flag_summary_rows = await db.execute(
+        select(
+            AuditFlag.risk_level,
+            AuditFlag.status,
+            func.count(AuditFlag.id)
+        )
+        .where(AuditFlag.document_version_id == active_version.id)
+        .group_by(AuditFlag.risk_level, AuditFlag.status)
+    )
+
+    flag_summary = DocumentFlagSummary(total=0, unresolved=0, resolved=0, by_risk_level={})
+    flag_risk_totals = defaultdict(int)
+    for risk_level, status_value, count in flag_summary_rows:
+        flag_summary.total += count
+        if status_value == "resolved":
+            flag_summary.resolved += count
+        else:
+            flag_summary.unresolved += count
+        flag_risk_totals[risk_level] += count
+    flag_summary.by_risk_level = dict(flag_risk_totals)
+
+    chunk_count_result = await db.execute(
+        select(func.count(DocumentChunk.id)).where(DocumentChunk.document_version_id == active_version.id)
+    )
+    chunk_count = chunk_count_result.scalar_one()
+
+    chunk_preview_query = (
+        select(DocumentChunk)
+        .where(DocumentChunk.document_version_id == active_version.id)
+        .order_by(DocumentChunk.chunk_index.asc())
+        .limit(10)
+    )
+    chunk_preview_result = await db.execute(chunk_preview_query)
+    chunk_preview = [
+        DocumentChunkPreviewResponse(
+            id=chunk.id,
+            chunk_index=chunk.chunk_index,
+            heading=chunk.heading,
+            page_number=chunk.page_number,
+            preview_text=(chunk.raw_text[:500] + "...") if len(chunk.raw_text) > 500 else chunk.raw_text,
+        )
+        for chunk in chunk_preview_result.scalars().all()
+    ]
+
+    obligations_query = (
+        select(Obligation)
+        .where(Obligation.document_id == document.id)
+        .order_by(Obligation.due_date.asc().nulls_last())
+        .limit(20)
+    )
+    obligations_result = await db.execute(obligations_query)
+
+    obligation_count_result = await db.execute(
+        select(func.count(Obligation.id)).where(Obligation.document_id == document.id)
+    )
+    obligation_count = obligation_count_result.scalar_one()
+
+    obligation_preview = [
+        ObligationPreviewResponse(
+            id=obligation.id,
+            title=obligation.title,
+            description=obligation.description,
+            due_date=obligation.due_date,
+            status=obligation.status,
+            document_chunk_id=obligation.document_chunk_id,
+        )
+        for obligation in obligations_result.scalars().all()
+    ]
 
     return DeepAnalysisViewResponse(
         document=DocumentResponse.model_validate(document),
         active_version=DocumentVersionResponse.model_validate(active_version),
+        flag_summary=flag_summary,
         flags=[AuditFlagResponse.model_validate(f) for f in flags_result.scalars().all()],
-        chunks=[DocumentChunkResponse.model_validate(c) for c in chunks_result.scalars().all()],
+        chunk_count=chunk_count,
+        chunk_preview=chunk_preview,
+        obligation_count=obligation_count,
+        obligations=obligation_preview,
     )
 
 

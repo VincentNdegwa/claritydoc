@@ -3,7 +3,7 @@ import uuid
 from httpx import AsyncClient
 from sqlalchemy import select
 
-from src.database.models import Document, DocumentVersion
+from src.database.models import Document, DocumentVersion, AuditFlag
 
 
 @pytest.mark.asyncio
@@ -85,23 +85,48 @@ async def test_list_documents(client, test_user, test_session):
 @pytest.mark.asyncio
 async def test_get_document_details(client, test_user, test_session):
     doc_id = uuid.uuid4()
+    version_id = uuid.uuid4()
     doc = Document(
         id=doc_id,
         user_id=test_user.id,
         title="Test Document",
         document_type="contract",
         status="analyzed",
-        current_version_id=None,
+        current_version_id=version_id,
+    )
+    version = DocumentVersion(
+        id=version_id,
+        document_id=doc_id,
+        version_number=1,
+        storage_path="uploads/test.pdf",
+        file_type="pdf",
+        is_signed=False,
+    )
+    flag = AuditFlag(
+        id=uuid.uuid4(),
+        document_version_id=version_id,
+        document_chunk_id=None,
+        risk_level="high",
+        category="asymmetrical_termination",
+        issue_summary="Sample risk",
+        detailed_explanation="Details",
+        playbook_counter_proposal="Counter",
+        status="unresolved",
     )
     test_session.add(doc)
+    test_session.add(version)
+    test_session.add(flag)
     await test_session.commit()
     
     response = await client.get(f"/api/v1/documents/{doc_id}")
     
     assert response.status_code == 200
     data = response.json()
-    assert data["id"] == str(doc_id)
-    assert data["title"] == "Test Document"
+    assert data["document"]["id"] == str(doc_id)
+    assert data["document"]["title"] == "Test Document"
+    assert len(data["versions"]) == 1
+    assert data["versions"][0]["flag_count"] == 1
+    assert data["flag_summary"]["total"] == 1
 
 
 @pytest.mark.asyncio

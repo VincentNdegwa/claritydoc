@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
+from arq.worker import Retry
 
 from src.database.session import AsyncSessionFactory
 from src.database.models import Document, DocumentVersion, BackgroundJob
@@ -21,15 +22,17 @@ async def execute_pipeline_lifecycle(
     logger.info(f"Starting analysis lifecycle execution for document version: {version_id}")
     
     async with AsyncSessionFactory() as db:
+        job = BackgroundJob(
+            document_id=document_id,
+            task_name="execute_pipeline_lifecycle",
+            status="processing",
+            started_at=datetime.utcnow()
+        )
+        db.add(job)
+        await db.commit()
+        await db.refresh(job)
+
         try:
-            job = BackgroundJob(
-                document_id=document_id,
-                task_name="execute_pipeline_lifecycle",
-                status="processing",
-                started_at=datetime.utcnow()
-            )
-            db.add(job)
-            await db.flush()
 
             logger.info(f"Stage 1/4: Launching Parser Agent for path: {storage_path}")
             parsed_text = await document_parser.extract_text_content(storage_path)
@@ -73,11 +76,27 @@ async def execute_pipeline_lifecycle(
         except Exception as pipeline_error:
             logger.error(f"Critical execution fault on processing pipeline: {pipeline_error}")
             await db.rollback()
-            
-            await _update_document_status(db, document_id, "error")
-            await db.commit()
-            logger.error(f"Job failed for document: {document_id}")
-            raise pipeline_error
+            await db.refresh(job)
+
+            job.current_retry_count += 1
+            job.error_payload = {"error": str(pipeline_error)}
+
+            if job.current_retry_count < job.max_retries:
+                retry_delay = min(60, job.current_retry_count * 5)
+                job.status = "retrying"
+                await _update_document_status(db, document_id, "retrying")
+                await db.commit()
+                logger.warning(
+                    f"Job retry {job.current_retry_count}/{job.max_retries} scheduled in {retry_delay}s for document: {document_id}"
+                )
+                raise Retry(defer=retry_delay)
+            else:
+                job.status = "failed"
+                job.completed_at = datetime.utcnow()
+                await _update_document_status(db, document_id, "error")
+                await db.commit()
+                logger.error(f"Job failed after {job.max_retries} attempts for document: {document_id}")
+                raise pipeline_error
 
 
 async def _update_version_text(db: AsyncSession, version_id: uuid.UUID, text: str) -> None:
