@@ -86,6 +86,13 @@ export interface ObligationStatusUpdate {
   status: string
 }
 
+export interface DocumentChatRequest {
+  question: string
+  flag_ids?: string[]
+  obligation_ids?: string[]
+  chunk_ids?: string[]
+}
+
 export interface DocumentRelationshipCreate extends DocumentRelationshipBase {
   source_document_id: string
   target_document_id: string
@@ -139,6 +146,14 @@ export interface DocumentRelationshipResponse extends DocumentRelationshipBase {
   source_document_id: string
   target_document_id: string
   created_at: string
+}
+
+export interface DocumentChatResponse {
+  answer: string
+  sources?: Array<{
+    type: 'flag' | 'obligation' | 'chunk'
+    id: string
+  }>
 }
 
 export interface DocumentRelationshipSuccessResponse {

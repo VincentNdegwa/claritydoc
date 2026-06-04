@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from "vue";
+import { ref, onMounted, computed, nextTick, onBeforeUnmount } from "vue";
 import { useRoute } from "#imports";
 import { toast } from "vue-sonner";
 import { useAuth } from "@clerk/vue";
@@ -16,12 +16,12 @@ import {
   FileText,
   AlertTriangle,
   FileText as FileIcon,
-  Calendar,
   FileText as FileTextIcon,
   CheckCircle,
   Clock,
 } from "@lucide/vue";
 import { useDocumentApi } from "@/lib/api";
+import DocumentChatPanel from "@/pages/dashboard/documents/components/DocumentChatPanel.vue";
 import type {
   DeepAnalysisViewResponse,
   AuditFlagResponse,
@@ -64,6 +64,67 @@ const chunkMap = computed<Record<string, DocumentChunkPreviewResponse>>(() => {
   }
   return map;
 });
+
+const activeTab = ref<"flags" | "obligations">("flags");
+const highlightedFlagId = ref<string | null>(null);
+const highlightedObligationId = ref<string | null>(null);
+
+const flagCardRefs = new Map<string, HTMLElement>();
+const obligationCardRefs = new Map<string, HTMLElement>();
+
+const setFlagRef = (id: string, el: Element | null) => {
+  if (el) flagCardRefs.set(id, el as HTMLElement);
+  else flagCardRefs.delete(id);
+};
+
+const setObligationRef = (id: string, el: Element | null) => {
+  if (el) obligationCardRefs.set(id, el as HTMLElement);
+  else obligationCardRefs.delete(id);
+};
+
+let highlightTimeout: ReturnType<typeof setTimeout> | null = null;
+
+const clearHighlights = () => {
+  highlightedFlagId.value = null;
+  highlightedObligationId.value = null;
+};
+
+const focusReferenceFromChat = async ({
+  type,
+  id,
+}: {
+  type: "flag" | "obligation";
+  id: string;
+}) => {
+  if (!analysis.value) return;
+
+  const tabKey = type === "flag" ? "flags" : "obligations";
+  if (activeTab.value !== tabKey) {
+    activeTab.value = tabKey;
+    await nextTick();
+  }
+
+  if (type === "flag") {
+    highlightedFlagId.value = id;
+    highlightedObligationId.value = null;
+  } else {
+    highlightedObligationId.value = id;
+    highlightedFlagId.value = null;
+  }
+
+  await nextTick();
+
+  const targetMap = type === "flag" ? flagCardRefs : obligationCardRefs;
+  const targetEl = targetMap.get(id);
+  if (targetEl) {
+    targetEl.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
+  if (highlightTimeout) clearTimeout(highlightTimeout);
+  highlightTimeout = setTimeout(() => {
+    clearHighlights();
+  }, 4000);
+};
 
 const obligationsByChunk = computed<Record<string, ObligationResponse[]>>(() => {
   if (!analysis.value) return {};
@@ -162,6 +223,11 @@ const fetchAnalysis = async () => {
 };
 
 onMounted(fetchAnalysis);
+onBeforeUnmount(() => {
+  if (highlightTimeout) clearTimeout(highlightTimeout);
+  flagCardRefs.clear();
+  obligationCardRefs.clear();
+});
 </script>
 
 <template>
@@ -253,7 +319,7 @@ onMounted(fetchAnalysis);
         </div>
       </div>
 
-      <Tabs default-value="flags" class="w-full">
+      <Tabs v-model="activeTab" class="w-full">
         <TabsList class="grid w-full grid-cols-2">
           <TabsTrigger value="flags">
             <AlertTriangle class="size-4 mr-2" />
@@ -277,7 +343,12 @@ onMounted(fetchAnalysis);
               <div
                 v-for="flag in analysis.flags"
                 :key="flag.id"
+                :ref="(el) => setFlagRef(flag.id, el as Element)"
                 class="border rounded-lg p-4"
+                :class="{
+                  'ring-2 ring-primary/60 border-primary/60 shadow-lg':
+                    highlightedFlagId === flag.id,
+                }"
               >
                 <div class="flex items-start justify-between mb-2">
                   <div class="flex items-center gap-2">
@@ -376,7 +447,12 @@ onMounted(fetchAnalysis);
                   <div
                     v-for="obligation in obligations"
                     :key="obligation.id"
+                    :ref="(el) => setObligationRef(obligation.id, el as Element)"
                     class="border rounded-lg p-4"
+                    :class="{
+                      'ring-2 ring-primary/60 border-primary/60 shadow-lg':
+                        highlightedObligationId === obligation.id,
+                    }"
                   >
                     <div class="flex items-start justify-between mb-2">
                       <div class="flex items-center gap-2">
@@ -386,7 +462,10 @@ onMounted(fetchAnalysis);
                           :class="obligationStatusConfig[obligation.status]?.text || obligationStatusConfig.default!.text"
                         />
                         <Badge
-                          :class="[obligationStatusConfig[obligation.status]?.bg, obligationStatusConfig[obligation.status]?.text]"
+                          :class="[
+                            obligationStatusConfig[obligation.status]?.bg || obligationStatusConfig.default!.bg,
+                            obligationStatusConfig[obligation.status]?.text || obligationStatusConfig.default!.text,
+                          ]"
                           class="text-xs font-medium"
                         >
                           {{ capitalize(obligation.status) }}
@@ -431,7 +510,7 @@ onMounted(fetchAnalysis);
                     <h3 class="text-sm font-medium text-foreground mb-1">
                       {{ obligation.title }}
                     </h3>
-                    <div class="text-sm text-muted-foreground mb-2 prose prose-sm dark:prose-invert max-w-none" v-html="md.render(obligation.description)"></div>
+                    <div class="text-sm text-muted-foreground mb-2 prose prose-sm dark:prose-invert max-w-none" v-html="md.render(obligation.description || '')"></div>
                     <div v-if="obligation.due_date" class="text-xs text-muted-foreground">
                       Due: {{ obligation.due_date }}
                     </div>
@@ -442,6 +521,15 @@ onMounted(fetchAnalysis);
           </div>
         </TabsContent>
       </Tabs>
+
+      <DocumentChatPanel
+        :document-id="analysis.document.id"
+        :flags="analysis.flags"
+        :obligations="analysis.obligations"
+        :format-category="formatCategory"
+        :capitalize="capitalize"
+        @reference-select="focusReferenceFromChat"
+      />
     </div>
   </div>
 </template>

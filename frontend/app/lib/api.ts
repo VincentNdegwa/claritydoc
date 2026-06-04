@@ -11,6 +11,8 @@ import type {
   AuditFlagStatusUpdate,
   ObligationCreate,
   ObligationStatusUpdate,
+  DocumentChatRequest,
+  DocumentChatResponse,
 } from '@/types/api'
 
 const API_BASE_URL = import.meta.env.NUXT_APP_URL || 'http://localhost:8000'
@@ -82,6 +84,8 @@ export const useDocumentApi = () => {
     get: (documentId: string, token: string | null) => api.get<DocumentDetailResponse>(`/api/v1/documents/${documentId}`, token),
     delete: (documentId: string, token: string | null) => api.delete(`/api/v1/documents/${documentId}`, token),
     getAnalysis: (documentId: string, token: string | null) => api.get<DeepAnalysisViewResponse>(`/api/v1/documents/${documentId}/analysis`, token),
+    chatAboutDocument: (documentId: string, data: DocumentChatRequest, token: string | null) =>
+      api.post<DocumentChatResponse>(`/api/v1/documents/${documentId}/chat`, data, token),
   }
 }
 
