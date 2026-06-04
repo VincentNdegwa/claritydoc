@@ -221,3 +221,14 @@ class DeepAnalysisViewResponse(BaseModel):
     chunk_preview: list[DocumentChunkPreviewResponse]
     obligation_count: int
     obligations: list[ObligationPreviewResponse]
+
+
+class DocumentChatRequest(BaseModel):
+    question: str = Field(min_length=3, max_length=2000)
+    flag_ids: list[UUID] = Field(default_factory=list)
+    obligation_ids: list[UUID] = Field(default_factory=list)
+    chunk_ids: list[UUID] = Field(default_factory=list)
+
+
+class DocumentChatResponse(BaseModel):
+    answer: str

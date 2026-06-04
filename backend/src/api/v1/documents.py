@@ -2,6 +2,7 @@ import uuid
 from collections import defaultdict
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
+from pydantic import ValidationError
 from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -12,6 +13,7 @@ from src.database.models import Document, DocumentVersion, DocumentChunk, AuditF
 from src.core.auth import get_current_user, AuthenticatedUser
 from src.services.storage import storage_service
 from src.agents.pipeline import agent_orchestrator
+from src.services.ai.document_chat import generate_document_chat_answer
 from src.api.v1.schemas import (
     DocumentResponse,
     DocumentDetailResponse,
@@ -22,6 +24,8 @@ from src.api.v1.schemas import (
     AuditFlagResponse,
     DocumentChunkPreviewResponse,
     ObligationPreviewResponse,
+    DocumentChatRequest,
+    DocumentChatResponse,
 )
 
 router = APIRouter()
@@ -288,6 +292,51 @@ async def get_document_deep_analysis(
         obligation_count=obligation_count,
         obligations=obligation_preview,
     )
+
+
+@router.post("/{document_id}/chat", response_model=DocumentChatResponse)
+async def chat_about_document(
+    document_id: uuid.UUID,
+    payload: DocumentChatRequest,
+    db: AsyncSession = Depends(get_db_session),
+    current_user: AuthenticatedUser = Depends(get_current_user),
+):
+    document_query = (
+        select(Document)
+        .where(Document.id == document_id, Document.user_id == current_user.id)
+        .options(selectinload(Document.current_version))
+    )
+    document_result = await db.execute(document_query)
+    document = document_result.scalar_one_or_none()
+
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found or you do not have access to it."
+        )
+
+    active_version = document.current_version
+    if not active_version:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="The document is missing an active version to chat against."
+        )
+
+    try:
+        answer_text = await generate_document_chat_answer(
+            db,
+            user_id=current_user.id,
+            document=document,
+            active_version=active_version,
+            payload=payload,
+        )
+    except ValidationError as validation_err:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="AI response formatting failed while generating chat answer."
+        ) from validation_err
+
+    return DocumentChatResponse(answer=answer_text)
 
 
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
